@@ -1,4 +1,4 @@
-package research;
+package sparsecomm;
 
 import java.util.Arrays;
 import java.util.Iterator;
@@ -6,7 +6,7 @@ import java.util.LinkedList;
 
 import mpi.*;
 
-class Comm {
+public class SparseComm {
 
 	public int rank;
 	public int size;
@@ -17,7 +17,12 @@ class Comm {
 	//private LinkedList<Long> [] scatterDest;
 	private LinkedList<Integer> [] scatterOrigin;
 
-	public Comm( String[] args ) throws MPIException{
+	private int byteCount = 0;
+	private long nanoTime = 0;
+	private long sTime = 0;
+	private long eTime = 0;
+	
+	public SparseComm( String[] args ) throws MPIException{
 		
 		MPI.Init(args);
 		rank = MPI.COMM_WORLD.Rank();
@@ -161,8 +166,16 @@ class Comm {
 			
 			recvbuffer = new float[recvcounts[right]];
 			
+			sTime = System.nanoTime();
+
 			MPI.COMM_WORLD.Sendrecv(sendbuffer, 0, sendcount, MPI.FLOAT, left, 0, recvbuffer, 0, recvcounts[right], MPI.FLOAT, right, 0);
 	
+			eTime = System.nanoTime();
+
+			byteCount += sendcount*4;
+			byteCount += recvcounts[right]*4;
+
+			nanoTime += (eTime - sTime);
 			
 			for( j = 0; j < recvcounts[right]; j++){
 				recvbuf[recvpointer % recvbuf.length] = recvbuffer[j];
@@ -197,7 +210,7 @@ class Comm {
 			}
 			
 			buffer = new int[bufcounts[left]];
-			
+
 			MPI.COMM_WORLD.Sendrecv(sendbuf, displs[right], sendcounts[right], MPI.INT, right, 0, buffer, 0, bufcounts[left], MPI.INT, left, 0);
 			
 			//gatherDest[right] = new LinkedList<Long>(Arrays.asList(sendbuf));
@@ -226,8 +239,17 @@ class Comm {
 			
 			int bufcount = scatterOrigin[left].size();
 			buffer = new float[bufcount];
+
+			sTime = System.nanoTime();
 			MPI.COMM_WORLD.Sendrecv(sendbuf, displs[right], sendcounts[right], MPI.FLOAT, right, 0, buffer, 0, bufcount, MPI.FLOAT, left, 0);
 			
+			eTime = System.nanoTime();
+
+			byteCount += sendcounts[right]*4;
+			byteCount += bufcount*4;
+			
+			nanoTime += (eTime - sTime);
+
 			Iterator<Integer> itr = scatterOrigin[left].iterator();
 			int j = 0;
 			while(itr.hasNext()){
@@ -255,6 +277,16 @@ class Comm {
 			}
 		}
 		
+	}
+
+	public int getByteCount(){
+	
+		return byteCount;
+
+	}
+	
+	public float getThroughput(){
+		return (float)byteCount/nanoTime;
 	}
 	
 	public void terminate() throws MPIException{
