@@ -177,11 +177,14 @@ public class SparseComm {
 
 			nanoTime += (eTime - sTime);
 			
+			System.out.println(String.format("gather: rank: %d, left: %d, right: %d, scount: %d, rcount: %d", rank, left, right, sendcount, recvcounts[right]));
+			
 			for( j = 0; j < recvcounts[right]; j++){
 				recvbuf[recvpointer % recvbuf.length] = recvbuffer[j];
 				recvpointer++;
 			}
 		}
+		//MPI.COMM_WORLD.Barrier();
 	}
 	
 	public void scatterConfig(int [] sendbuf, int [] sendcounts, int [] displs) throws MPIException{
@@ -249,6 +252,8 @@ public class SparseComm {
 			byteCount += bufcount*4;
 			
 			nanoTime += (eTime - sTime);
+			
+			System.out.println(String.format("scatter: rank: %d, left: %d, right: %d, scount: %d, rcount: %d", rank, left, right, sendcounts[right], bufcount));
 
 			Iterator<Integer> itr = scatterOrigin[left].iterator();
 			int j = 0;
@@ -259,6 +264,7 @@ public class SparseComm {
 				j++;
 			}
 		}
+		//MPI.COMM_WORLD.Barrier();
 	}
 	
 	public void printConfig(){
@@ -284,6 +290,11 @@ public class SparseComm {
 		return byteCount;
 
 	}
+
+	public float getTime(){
+	
+		return nanoTime/1000000000f;
+	}
 	
 	public float getThroughput(){
 		return (float)byteCount/nanoTime;
@@ -293,4 +304,7 @@ public class SparseComm {
 		MPI.Finalize();
 	}
 	
+	public void barrier() throws MPIException{
+		MPI.COMM_WORLD.Barrier();
+	}	
 }

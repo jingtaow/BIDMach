@@ -37,6 +37,10 @@ class Model(args: Array[String]){
 	var outbound_displs: Array[Int] = null;
 	var outbound_counts: Array[Int] = null;
 	
+	
+	var sTime = 0l;
+	var eTime = 0l;
+
 	def init(){
 		nvertices = args(0).toInt;
 		
@@ -52,13 +56,14 @@ class Model(args: Array[String]){
 		if(comm.rank == 0){
 			println("initialize model parameters ...");
 		}
-		initModel();
+		initModel2();
 		
 		if(comm.rank == 0){
 			println("vertices assignment ...");
 		}
 		partition();
 		
+		comm.barrier();		
 		if(comm.rank == 0){
 			println("reduce config ...");
 		}
@@ -125,16 +130,45 @@ class Model(args: Array[String]){
 	def initModel(){
 		//load data
 
-		val row: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph%d.mat".format(comm.rank % 4), "row");
-		val col: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph%d.mat".format(comm.rank % 4), "col");
+		//val row: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "row");
+		//val col: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "col");
 		
+		//val row: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph.mat", "row");
+		//val col: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph.mat", "col");
+		
+
+		val ndata: Int = 32/size;
+		
+		var rt:IMat = null;
+		var ct:IMat = null;
+		var row:IMat = null;
+		var col:IMat = null;
+
+		for(i <- 0 to ndata-1){
+
+			if(i==0){
+				row = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "row");
+				col = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "col");
+			}else{
+				
+				rt = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank+i*size), "row");
+				ct = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank+i*size), "col");
+				row = row \ rt;
+				col = col \ ct;
+
+			}
+		
+		}
+
 		val (ur, ir, jr) = unique(row);
 		val (uc, ic, jc) = unique(col);
 				
 		nr = length(ur);
 		nc = length(uc);
+
+		println("rank: %d, nr: %d, nc: %d".format(comm.rank, nr, nc));
 		
-		// map from vertex indices to compact indices, for internal use only		
+		// map from vertex indices to compact indices, for internal use only, in and out flipped		
 		inMap = Map[Int, Int]();
 		outMap = Map[Int, Int]();
 		
@@ -172,14 +206,126 @@ class Model(args: Array[String]){
 			col(i) = cmap;
 		}
 		
-		edgeMat = sparse(row, col, ones(ne, 1));
+		//edgeMat = sparse(row, col, ones(ne, 1));
+		edgeMat = sparse(col, row, ones(ne,1));
+
+	}
+	
+	def initModel2(){
+		//load data
+
+		//val row: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "row");
+		//val col: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "col");
+		
+		//val row: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph.mat", "row");
+		//val col: IMat = load("/home/ubuntu/data/TwitterGraph/tgraph.mat", "col");
+		
+
+		val ndata: Int = 32/size;
+		
+		var rt:IMat = null;
+		var ct:IMat = null;
+		var row:IMat = null;
+		var col:IMat = null;
+		//var srow:IMat = null;
+		//var scol:IMat = null;
+
+		for(i <- 0 to ndata-1){
+
+			if(i==0){
+				row = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "row");
+				col = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank), "col");
+			}else{
+				
+				rt = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank+i*size), "row");
+				ct = load("/home/ubuntu/data/TwitterGraph/tgraph%d-rl.mat".format(comm.rank+i*size), "col");
+				row = row \ rt;
+				col = col \ ct;
+
+			}
+		
+		}
+		val ne = length(row);
+				
+		var ur:IMat = izeros(nvertices, 1);
+		var uc:IMat = izeros(nvertices, 1);
+		
+		var rMap:IMat = -1*iones(nvertices, 1);
+		var cMap:IMat = -1*iones(nvertices, 1);
+		
+		val srow = sort(row);
+		val scol = sort(col);
+		//row = sort(row);
+		//col = sort(col);
+		
+		var uri:Int = 0;
+		var uci:Int = 0;
+		
+		var url:Int = -1;
+		var ucl:Int = -1;
+		
+		var vid: Int = -1;
+		
+		for( i <- 0 to ne-1){
+			if(srow(i)!=url){
+				vid = srow(i);
+				ur(uri) = vid;
+				rMap(vid) = uri;
+				uri = uri+1;
+			}
+			url = srow(i);
+			
+			if(scol(i)!=ucl){
+				vid = scol(i);
+				uc(uci) = vid;
+				cMap(vid) = uci;
+				uci = uci+1;
+			}
+			ucl = scol(i);
+		}
+		
+		ur = ur(0 to uri-1);
+		uc = uc(0 to uci-1);
+		
+		nr = uri;
+		nc = uci;
+
+		println("rank: %d, nr: %d, nc: %d".format(comm.rank, nr, nc));
+		
+		// map from vertex indices to compact indices, for internal use only, in and out flipped		
+		// inMap = Map[Int, Int]();
+		// outMap = Map[Int, Int]();
+		
+		var id: Int = 0;
+		
+		inboundIndices = uc.data;
+		outboundIndices = ur.data;
+
+		inboundValues = Array.fill[Float](nc)(1f/nvertices);
+
+
+		var v: Int = 0;
+		
+		for(i <- 0 to ne-1){
+
+			v = row(i);
+			row(i) = rMap(v);
+			
+			v = col(i);
+			col(i) = cMap(v);
+		}
+		
+		//edgeMat = sparse(row, col, ones(ne, 1));
+		edgeMat = sparse(col, row, ones(ne,1));
 
 	}
 	
 	def update(){
 		
-		in = FMat(nc, 1, inboundValues);
-		out = edgeMat * in;
+		//in = FMat(nc, 1, inboundValues);
+		//out = edgeMat * in;
+		in = FMat(1, nc, inboundValues);
+		out = in * edgeMat;
 		outboundValues = out.data;
 		
 	}
@@ -208,7 +354,8 @@ class Model(args: Array[String]){
 		flip;
 		update();
 		val fu = gflop;
-		
+
+
 		if(comm.rank == 0){
 			println("compute (gflops, time)" + fu);
 		}
@@ -217,13 +364,21 @@ class Model(args: Array[String]){
 			println("communicate model ...");
 		}
 		
-		flip;
-		reduce();
-		val fr = gflop;
+		comm.barrier();
 		
-		println("processor %d comm time: %f s)".format(comm.rank, fr._2));
+		//flip;
+		sTime = System.nanoTime;
+		reduce();
+		eTime = System.nanoTime;
+		//val fr = gflop;
+		
+
+		//println("processor %d old comm time: %f s)".format(comm.rank, fr._2));
+		println("processor %d comm time: %f s)".format(comm.rank, (eTime-sTime)/1000000000f));
+		//println("processor %d sendrecv time: %f s".format(comm.rank, comm.getTime));
 		println("processor %d throughput: %f GB/sec".format(comm.rank, comm.getThroughput));
 		
+		vector = Array.fill[Float](nv_per_proc)(0f);		
 		}
 		
 		
