@@ -35,11 +35,11 @@ class GibbsLDAModel(sdata: GSMat, k: Int, nsamps: Float) {
         AN.zeros(k, nfeats)
         BN.zeros(k, nusers)
         
-        println("iteration: %d, perplexity: %f".format(i, mean(perplexity).dv))
+        println("iteration: %d, perplexity: %f".format(i, perplexity))
     }
   }
   
-  def perplexity:FMat = {  
+  def perplexity:Double = {  
   	val preds = DDS(A, B, sdata)
   	val dc = sdata.contents
   	val pc = preds.contents
@@ -49,7 +49,8 @@ class GibbsLDAModel(sdata: GSMat, k: Int, nsamps: Float) {
   	val mms = sum(A,2)
   	val suu = ln(mms ^* B) 
   	val vv = ((pc ddot dc) - (sdat ddot suu))/sum(sdat,2).dv
-  	row(vv, math.exp(-vv))
+  	//row(vv, math.exp(-vv))
+  	math.exp(-vv)
   }
   
 
