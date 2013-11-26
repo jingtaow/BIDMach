@@ -23,17 +23,19 @@ class GibbsLDAModel(sdata: GSMat, k: Int, nsamps: Float) {
   }
   
   def update = {
-    for (i <- 0 until 10) {
+    for (i <- 0 until 50) {
+        val alpha = 2f/k
+        val beta = 0.01f
         val preds = DDS(A, B, sdata)	
         val dc = sdata.contents
 	  	val pc = preds.contents
 	  	max(1e-6f, pc, pc)
 	  	pc ~ dc / pc
     	LDAgibbs(k, sdata.nnz, A.data, B.data, AN.data, BN.data, sdata.ir, sdata.ic, pc.data, nsamps)
-        A = A + AN
-        B = B + BN
-        AN.zeros(k, nfeats)
-        BN.zeros(k, nusers)
+        A = AN + alpha
+        B = BN + beta
+        AN.clear
+        BN.clear
         
         println("iteration: %d, perplexity: %f".format(i, perplexity))
     }
