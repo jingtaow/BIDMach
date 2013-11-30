@@ -12,16 +12,16 @@ class GibbsLDAModel(sdata: SMat, k: Int, nsamps: Float, w: Float, alpha: Float, 
   var B: GMat = null;
   var AN: GMat = null;
   var BN: GMat = null;
-  var bdata:GSMat = null;
+  //var bdata:GSMat = null;
   val (nfeats, nusers) = size(sdata)
   val nbatch = nusers/sbatch
   
   def init = {
     
     A = grand(k, nfeats)
-    B = grand(k, nbatch)
+    B = grand(k, sbatch)
     AN = gzeros(k, nfeats)
-    BN = gzeros(k, nbatch)
+    BN = gzeros(k, sbatch)
   }
   
   def update = {
@@ -34,7 +34,7 @@ class GibbsLDAModel(sdata: SMat, k: Int, nsamps: Float, w: Float, alpha: Float, 
       
       //mini-batch
       for(j <- 0 until nbatch){  
-    	bdata = GSMat(sdata(?, j*nbatch until (j+1)*nbatch))
+    	val bdata = GSMat(sdata(?, j*sbatch until (j+1)*sbatch))
         val preds = DDS(A, B, bdata)	
         val dc = bdata.contents
 	  	val pc = preds.contents
@@ -42,18 +42,58 @@ class GibbsLDAModel(sdata: SMat, k: Int, nsamps: Float, w: Float, alpha: Float, 
 	  	//pc ~ dc / pc
         pc ~ pc / dc
     	LDAgibbs(k, bdata.nnz, A.data, B.data, AN.data, BN.data, bdata.ir, bdata.ic, pc.data, nsamps)
-        A = w*A + (1-w)*AN + alpha
+        //A = w*A + (1-w)*AN + alpha
+    	A += AN + alpha
+    	val suma = sum(A)
+    	A /= suma
         B = BN + beta
+        val sumb = sum(B)
+        B /= sumb
         AN.clear
         BN.clear
+        println("iteration: %d, batch: %d, perplexity: %f".format(i, j, perplexity(bdata)))
       }
-      println("iteration: %d, perplexity: %f".format(i, perplexity))
+      //println("iteration: %d, perplexity: %f".format(i, perplexity))
     }
   }
   
-  def perplexity:Double = {  
-    A = A / sum(A)
-    B = B / sum(B)
+   def update2 = {
+    
+    A ~ A + alpha
+    B ~ B + beta
+    
+    // iteration
+    for (i <- 0 until 10) {
+      
+      //mini-batch
+      for(j <- 0 until nbatch){  
+    	val bdata = GSMat(sdata(?, j*sbatch until (j+1)*sbatch))
+        val preds = DDS(A, B, bdata)	
+        val dc = bdata.contents
+	  	val pc = preds.contents
+	  	//max(1e-6f, pc, pc)
+	  	//pc ~ dc / pc
+        pc ~ pc / dc
+    	LDAgibbs(k, bdata.nnz, A.data, B.data, AN.data, BN.data, bdata.ir, bdata.ic, pc.data, nsamps)
+        //A = w*A + (1-w)*AN + alpha
+    	A ~ A + AN
+    	val suma = sum(A)
+    	A ~ A / suma
+    	A ~ A + alpha
+        B ~ BN + beta
+        AN.clear
+        BN.clear
+        if(j==0){
+        	println("iteration: %d, batch: %d, perplexity: %f".format(i, j, perplexity(bdata)))
+        }
+      }
+      //println("iteration: %d, perplexity: %f".format(i, perplexity()))
+    }
+  }
+  
+  def perplexity(bdata: GSMat):Double = {  
+    //A = A / sum(A)
+    //B = B / sum(B)
   	val preds = DDS(A, B, bdata)
   	val dc = bdata.contents
   	val pc = preds.contents
@@ -126,7 +166,7 @@ object GibbsLDAModel{
     
     val model = new GibbsLDAModel(data, k, nsamps, w, alpha, beta, sbatch)
 	model.init
-	model.update
+	model.update2
 	
 	
     
