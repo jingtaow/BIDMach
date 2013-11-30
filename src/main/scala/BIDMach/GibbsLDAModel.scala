@@ -6,48 +6,60 @@ import BIDMat.SciFunctions._
 import edu.berkeley.bid.CUMAT._
 import java.io._
 
-class GibbsLDAModel(sdata: GSMat, k: Int, nsamps: Float) {
+class GibbsLDAModel(sdata: SMat, k: Int, nsamps: Float, w: Float, alpha: Float, beta: Float, sbatch: Int) {
 	
   var A: GMat = null;
   var B: GMat = null;
   var AN: GMat = null;
   var BN: GMat = null;
-  var (nfeats, nusers) = size(sdata)
+  var bdata:GSMat = null;
+  val (nfeats, nusers) = size(sdata)
+  val nbatch = nusers/sbatch
   
   def init = {
     
     A = grand(k, nfeats)
-    B = grand(k, nusers)
+    B = grand(k, nbatch)
     AN = gzeros(k, nfeats)
-    BN = gzeros(k, nusers)
+    BN = gzeros(k, nbatch)
   }
   
   def update = {
-    for (i <- 0 until 50) {
-        val alpha = 2f/k
-        val beta = 0.01f
-        val preds = DDS(A, B, sdata)	
-        val dc = sdata.contents
+    
+    A ~ A + alpha
+    B ~ B + beta
+    
+    // iteration
+    for (i <- 0 until 10) {
+      
+      //mini-batch
+      for(j <- 0 until nbatch){  
+    	bdata = GSMat(sdata(?, j*nbatch until (j+1)*nbatch))
+        val preds = DDS(A, B, bdata)	
+        val dc = bdata.contents
 	  	val pc = preds.contents
-	  	max(1e-6f, pc, pc)
-	  	pc ~ dc / pc
-    	LDAgibbs(k, sdata.nnz, A.data, B.data, AN.data, BN.data, sdata.ir, sdata.ic, pc.data, nsamps)
-        A = AN + alpha
+	  	//max(1e-6f, pc, pc)
+	  	//pc ~ dc / pc
+        pc ~ pc / dc
+    	LDAgibbs(k, bdata.nnz, A.data, B.data, AN.data, BN.data, bdata.ir, bdata.ic, pc.data, nsamps)
+        A = w*A + (1-w)*AN + alpha
         B = BN + beta
         AN.clear
         BN.clear
-        
-        println("iteration: %d, perplexity: %f".format(i, perplexity))
+      }
+      println("iteration: %d, perplexity: %f".format(i, perplexity))
     }
   }
   
   def perplexity:Double = {  
-  	val preds = DDS(A, B, sdata)
-  	val dc = sdata.contents
+    A = A / sum(A)
+    B = B / sum(B)
+  	val preds = DDS(A, B, bdata)
+  	val dc = bdata.contents
   	val pc = preds.contents
   	max(1e-6f, pc, pc)
   	ln(pc, pc)
-  	val sdat = sum(sdata,1)
+  	val sdat = sum(bdata,1)
   	val mms = sum(A,2)
   	val suu = ln(mms ^* B) 
   	val vv = ((pc ddot dc) - (sdat ddot suu))/sum(sdat,2).dv
@@ -97,6 +109,10 @@ object GibbsLDAModel{
 	
 	val k = args(1).toInt
 	val nsamps = args(2).toFloat
+	val w = args(3).toFloat
+	val alpha = args(4).toFloat
+	val beta = args(5).toFloat
+	val sbatch = args(6).toInt
 	// sdata dimension nfeats (words) * nusers (documents)
 	val data:SMat = loadSMat(fname)
 	println("size of smat: " + size(data))
@@ -106,9 +122,9 @@ object GibbsLDAModel{
 	Mat.checkCUDA
 
 	println("gpu: " + Mat.hasCUDA)
-    val sdata = GSMat(data)
+    //val sdata = GSMat(data)
     
-    val model = new GibbsLDAModel(sdata, k, nsamps)
+    val model = new GibbsLDAModel(data, k, nsamps, w, alpha, beta, sbatch)
 	model.init
 	model.update
 	
