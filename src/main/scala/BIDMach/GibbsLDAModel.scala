@@ -6,28 +6,30 @@ import BIDMat.SciFunctions._
 import edu.berkeley.bid.CUMAT._
 import java.io._
 
-class GibbsLDAModel(sdata: SMat, k: Int, nsamps: Float, w: Float, alpha: Float, beta: Float, sbatch: Int) {
+class GibbsLDAModel(sdata: SMat, k: Int, nsamps: Float, w: Float, alpha: Float, beta: Float, sbatch: Int, niter: Int) {
 	
-  var A: GMat = null;
-  var B: GMat = null;
-  var AN: GMat = null;
-  var BN: GMat = null;
-  //var bdata:GSMat = null;
   val (nfeats, nusers) = size(sdata)
   val nbatch = nusers/sbatch
   
+  var A: GMat = null
+  //var B: GMat = null
+  var Bs: Array[GMat] = Array.fill[GMat](nbatch)(null)
+  var AN: GMat = null
+  var BN: GMat = null
+  //var bdata:GSMat = null
+
+  
   def init = {
     
-    A = grand(k, nfeats)
-    B = grand(k, sbatch)
+    A = grand(k, nfeats) + alpha
+    for(j <- 0 until nbatch){
+    	Bs(j) = grand(k, sbatch) + beta
+    }
     AN = gzeros(k, nfeats)
     BN = gzeros(k, sbatch)
   }
-  
+  /*
   def update = {
-    
-    A ~ A + alpha
-    B ~ B + beta
     
     // iteration
     for (i <- 0 until 10) {
@@ -56,42 +58,46 @@ class GibbsLDAModel(sdata: SMat, k: Int, nsamps: Float, w: Float, alpha: Float, 
       //println("iteration: %d, perplexity: %f".format(i, perplexity))
     }
   }
-  
+  */
    def update2 = {
     
-    A ~ A + alpha
-    B ~ B + beta
-    
     // iteration
-    for (i <- 0 until 10) {
+    for (i <- 0 until niter) {
       
       //mini-batch
       for(j <- 0 until nbatch){  
     	val bdata = GSMat(sdata(?, j*sbatch until (j+1)*sbatch))
-        val preds = DDS(A, B, bdata)	
+        val preds = DDS(A, Bs(j), bdata)	
         val dc = bdata.contents
 	  	val pc = preds.contents
 	  	//max(1e-6f, pc, pc)
 	  	//pc ~ dc / pc
         pc ~ pc / dc
-    	LDAgibbs(k, bdata.nnz, A.data, B.data, AN.data, BN.data, bdata.ir, bdata.ic, pc.data, nsamps)
-        //A = w*A + (1-w)*AN + alpha
-    	A ~ A + AN
+    	LDAgibbs(k, bdata.nnz, A.data, Bs(j).data, AN.data, BN.data, bdata.ir, bdata.ic, pc.data, nsamps)
+        
+    	//val wA = w*A
+    	//val update = (1-w)*(AN + alpha) 
+    	
+    	A ~ A * w
+    	AN ~ AN + alpha
+    	AN ~ AN * (1-w)
+    	A ~ A + AN 
+    	//A ~ A + alpha
     	val suma = sum(A)
     	A ~ A / suma
-    	A ~ A + alpha
-        B ~ BN + beta
+  
+        Bs(j) ~ BN + beta
         AN.clear
         BN.clear
-        if(j==0){
-        	println("iteration: %d, batch: %d, perplexity: %f".format(i, j, perplexity(bdata)))
-        }
+        //if(j==0){
+        	println("iteration: %d, batch: %d, perplexity: %f".format(i, j, perplexity(bdata, A, Bs(j))))
+        //}
       }
       //println("iteration: %d, perplexity: %f".format(i, perplexity()))
     }
   }
   
-  def perplexity(bdata: GSMat):Double = {  
+  def perplexity(bdata: GSMat, A: GMat, B: GMat):Double = {  
     //A = A / sum(A)
     //B = B / sum(B)
   	val preds = DDS(A, B, bdata)
@@ -153,6 +159,7 @@ object GibbsLDAModel{
 	val alpha = args(4).toFloat
 	val beta = args(5).toFloat
 	val sbatch = args(6).toInt
+	val niter = args(7).toInt
 	// sdata dimension nfeats (words) * nusers (documents)
 	val data:SMat = loadSMat(fname)
 	println("size of smat: " + size(data))
@@ -164,7 +171,7 @@ object GibbsLDAModel{
 	println("gpu: " + Mat.hasCUDA)
     //val sdata = GSMat(data)
     
-    val model = new GibbsLDAModel(data, k, nsamps, w, alpha, beta, sbatch)
+    val model = new GibbsLDAModel(data, k, nsamps, w, alpha, beta, sbatch, niter)
 	model.init
 	model.update2
 	
