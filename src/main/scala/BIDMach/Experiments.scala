@@ -188,13 +188,13 @@ object Twitter {
   	 }
 	}
 	
-	def logisticModel(
+	def logisticModelPar(
 	    nstart0:Int = FilesDataSource.encodeDate(2012,3,1,0),
-			nend0:Int = FilesDataSource.encodeDate(2013,7,1,0)
+			nend0:Int = FilesDataSource.encodeDate(2013,7,1,0),
+			nuni0:Int = 50,
+			nbi0:Int = 100,
+			ntri0:Int = 200		
 			) = {
-	  val nuni0 = 50
-	  val nbi0 = 100
-	  val ntri0 = 200
 	  val ds = SFilesDataSource.twitterNgramBlend(nstart0, nend0)
 //	  val ds = SFilesDataSource.twitterWords(nstart0, nend0)
 	  ds.opts.addConstFeat = true
@@ -223,8 +223,41 @@ object Twitter {
 	  gopts.mask = mask
 	  gopts.targmap = mkdiag(ones(ntargets, 1)) ⊗ ones(expts1.length/ntargets, 1)
 	  gopts.targets = targets
-  	new LearnFParModelx(ds, gopts, GLMmodel.mkGLMmodel _, aopts, GLMmodel.mkUpdater _)
-	  
+  	new LearnFParModelx(ds, gopts, GLMmodel.mkGLMmodel _, aopts, GLMmodel.mkUpdater _)	  
+	}
+	
+	def logisticModel(
+	    mat:SMat,
+	    ntargs:Int = 1,
+	    exptsv:FMat = col(0.4, 0.5, 0.6),
+	    exptst:FMat = col(0.4, 0.5, 0.6),
+	    avalues:FMat = col(0.1, 0.3, 1),
+			nuni0:Int = 50,
+			nbi0:Int = 100,
+			ntri0:Int = 200		
+			) = { 
+	  val ds = new MatDataSource(Array(mat:Mat))
+	  val gd = getGramDict(nuni0, nbi0, ntri0)
+	  val em = getEmoticonMap(nuni0, nbi0, ntri0)
+	  val nfeats = gd.length + 1
+	  val mask = (sum(em) == 0f) \ 1
+	  val targets0 = em(0->(em.nrows-1), ?) \ zeros(em.nrows-1,1)
+	  val targets = targets0(0->ntargs, ?)
+	  val ntargets = targets.nrows
+	  val expts1 = ones(avalues.length*ntargets, 1) ⊗ exptsv ⊗ ones(exptst.length, 1)
+	  val expts2 = ones(avalues.length*exptsv.length*ntargets, 1) ⊗ exptst 
+	  val alphas = ones(ntargets, 1) ⊗ avalues ⊗ ones(exptst.length*exptsv.length, 1)
+	  val aopts = new ADAGradUpdater.Options
+	  aopts.vecExponent = expts1
+	  aopts.timeExponent = expts2
+	  aopts.alpha = alphas
+	  aopts.mask = mask
+	  val gopts = new GLMmodel.Options
+	  gopts.links = iones(expts1.length, 1)
+	  gopts.mask = mask
+	  gopts.targmap = mkdiag(ones(ntargets, 1)) ⊗ ones(expts1.length/ntargets, 1)
+	  gopts.targets = targets
+  	Learner(ds, new GLMmodel(gopts), null, new ADAGradUpdater(aopts))	  
 	}
 	
 
