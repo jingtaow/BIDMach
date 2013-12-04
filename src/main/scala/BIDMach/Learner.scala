@@ -499,8 +499,11 @@ object Learner {
   def scores2FMat(reslist:ListBuffer[FMat]):FMat = {
     val out = FMat(reslist(0).length, reslist.length)
     var i = 0
+    //println("size of out: " + size(out))
+    //println("size of res: " + size(reslist(0)))
+    //println("length of reslist" + reslist.length)
     while (i < reslist.length) {
-      out(?, i) = reslist(i)
+      out(?, i) = reslist(i).t
       i += 1
     }
     out
