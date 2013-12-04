@@ -20,39 +20,31 @@ class GibbsLDAModel(override val opts:GibbsLDAModel.Options = new GibbsLDAModel.
     updatemats = new Array[Mat](2)
     updatemats(0) = mm.zeros(mm.nrows, mm.ncols)
     updatemats(1) = mm.zeros(mm.nrows, 1)
+
   }
   
   def uupdate(sdata:Mat, user:Mat):Unit = {
     if (opts.putBack < 0) user.set(1f)
-	  for (i <- 0 until opts.uiter) {
-	  	val preds = DDS(mm, user, sdata)	
-	  	if (traceMem) println("uupdate %d %d %d, %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, GPUmem._1, getGPU))
-	  	val dc = sdata.contents
-	  	val pc = preds.contents
-	  	//max(opts.weps, pc, pc)
-	  	//pc ~ dc / pc
-        pc ~ pc / dc
-    	LDAgibbs(opts.dim, sdata.nnz, modelmats(0).data, user.data, updatemats(0).data, BN.data, sdata.ir, sdata.ic, pc.data, opts.nsamps)
-        
-	  	val unew = user ∘ (mm * preds) + opts.alpha
-	  	if (traceMem) println("uupdate %d %d %d, %d %d %d %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, dc.GUID, pc.GUID, unew.GUID, GPUmem._1, getGPU))
-	  	user <-- unew   
-	  }	
-//    println("user %g %g" format (mini(mini(user,1),2).dv, maxi(maxi(user,1),2).dv))
+
+	val preds = DDS(mm, user, sdata)	
+	if (traceMem) println("uupdate %d %d %d, %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, GPUmem._1, getGPU))
+	val dc = sdata.contents
+	val pc = preds.contents
+	//max(opts.weps, pc, pc)
+	//pc ~ dc / pc
+    pc ~ pc / dc
+    val unew = gzeros(user.nrows, user.ncols)    
+    LDAgibbs(opts.dim, sdata.nnz, modelmats(0).asInstanceOf[GMat].data, user.asInstanceOf[GMat].data, updatemats(0).asInstanceOf[GMat].data, unew.asInstanceOf[GMat].data, sdata.asInstanceOf[GSMat].ir, sdata.asInstanceOf[GSMat].ic, pc.asInstanceOf[GMat].data, opts.nsamps)
+	if (traceMem) println("uupdate %d %d %d, %d %d %d %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, dc.GUID, pc.GUID, unew.GUID, GPUmem._1, getGPU))
+	user ~ unew + opts.alpha   
+
   }
   
   def mupdate(sdata:Mat, user:Mat):Unit = {
-    val preds = DDS(mm, user, sdata)
-    val dc = sdata.contents
-    val pc = preds.contents
-    max(opts.weps, pc, pc)
-    pc ~ dc / pc
-    val ud = user *^ preds
-    ud ~ ud ∘ mm
-    ud ~ ud + opts.beta
-  	updatemats(0) <-- ud  
-  	sum(ud, 2, updatemats(1))
-  	if (traceMem) println("mupdate %d %d %d %d" format (sdata.GUID, user.GUID, ud.GUID, updatemats(0).GUID))
+
+  	updatemats(0) ~ updatemats(0) + opts.beta  
+  	sum(updatemats(0), 2, updatemats(1))
+  	//if (traceMem) println("mupdate %d %d %d %d" format (sdata.GUID, user.GUID, ud.GUID, updatemats(0).GUID))
   }
   
   def evalfun(sdata:Mat, user:Mat):FMat = {  
