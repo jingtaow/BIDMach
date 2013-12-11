@@ -490,7 +490,8 @@ object Learner {
     var i = lasti
     var sum = 0.0
     while (i < length) {
-      sum += reslist(i)(0)
+      //sum += reslist(i)(0)
+      sum += reslist(i)(1)
       i += 1
     }
     ("ll=%5.3f" format sum/(length-lasti))    
