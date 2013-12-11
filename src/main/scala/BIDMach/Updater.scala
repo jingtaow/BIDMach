@@ -17,6 +17,40 @@ abstract class Updater(val opts:Updater.Options = new Updater.Options) {
   def clear():Unit = {}
 }
 
+class NaiveUpdater(override val opts:NaiveUpdater.Options = new NaiveUpdater.Options) extends Updater(opts) {
+  
+  var firstStep = 0f
+  var rm:Mat = null
+  var restart:Mat = null
+  var started:Int = 0
+  
+  override def init(model0:Model) = {
+  	super.init(model0)
+    val modelmats = model0.modelmats
+    val updatemats = model0.updatemats
+    restart = modelmats(0) + 1f
+    firstStep = 0f
+  }
+      
+  def update(step:Long) = {
+  	val modelmats = model.modelmats
+  	val updatemats = model.updatemats
+  	val mm = modelmats(0)
+  	val um = updatemats(0)
+  	//um ~ um/updatemats(1)
+  	
+  	val w: Float = 0.8f
+    mm ~ mm * w
+    um ~ um * (1-w)
+    mm ~ mm + um 
+    mm ~ mm / sum(mm, 2)
+   
+  }
+  
+  override def clear() = {
+	  firstStep = 0f
+  }
+}
 
 class IncNormUpdater(override val opts:IncNormUpdater.Options = new IncNormUpdater.Options) extends Updater(opts) {
   
@@ -39,10 +73,12 @@ class IncNormUpdater(override val opts:IncNormUpdater.Options = new IncNormUpdat
   	val updatemats = model.updatemats
   	val mm = modelmats(0)
   	val um = updatemats(0)
-  	val rr = if (step == 0) 0.99f else {
+  	//val rr = if (step == 0) 0.99f else {
+  	val rr = if (step == 0) 0.8f else {
   	  if (firstStep == 0f) {
   	    firstStep = step
-  	    0.99f
+  	    //0.99f
+  	    0.8f
   	  } else {
   	    math.pow(firstStep / step, opts.power).toFloat
   	  }
@@ -331,6 +367,12 @@ class ADAGradUpdater(override val opts:ADAGradUpdater.Options = new ADAGradUpdat
 	}
 }
 
+object NaiveUpdater {
+  class Options extends Updater.Options {
+    var warmup = 0L 
+    var power = 0.9f
+  }
+}
 
 
 object IncNormUpdater {
