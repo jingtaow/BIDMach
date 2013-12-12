@@ -36,7 +36,8 @@ class GibbsLDAModel(override val opts:GibbsLDAModel.Options = new GibbsLDAModel.
     	//max(opts.weps, pc, pc)
     	//pc ~ dc / pc
     	pc ~ pc / dc
-    	val unew = gzeros(user.nrows, user.ncols)
+    	//val unew = gzeros(user.nrows, user.ncols)
+    	val unew = user*0
     	//val gmm = GMat(mm)
         //val gum = GMat(updatemats(0))
     	//gmm <-- mm
