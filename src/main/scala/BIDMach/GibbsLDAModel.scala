@@ -20,30 +20,42 @@ class GibbsLDAModel(override val opts:GibbsLDAModel.Options = new GibbsLDAModel.
     updatemats = new Array[Mat](2)
     updatemats(0) = mm.zeros(mm.nrows, mm.ncols)
     updatemats(1) = mm.zeros(mm.nrows, 1)
+    
 
   }
   
-  def uupdate(sdata:Mat, user:Mat):Unit = {
-    if (opts.putBack < 0) user.set(1f)
-
-	val preds = DDS(mm, user, sdata)	
-	if (traceMem) println("uupdate %d %d %d, %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, GPUmem._1, getGPU))
-	val dc = sdata.contents
-	val pc = preds.contents
-	//max(opts.weps, pc, pc)
-	//pc ~ dc / pc
-    pc ~ pc / dc
-    val unew = gzeros(user.nrows, user.ncols)    
-    LDAgibbs(opts.dim, sdata.nnz, modelmats(0).asInstanceOf[GMat].data, user.asInstanceOf[GMat].data, updatemats(0).asInstanceOf[GMat].data, unew.asInstanceOf[GMat].data, sdata.asInstanceOf[GSMat].ir, sdata.asInstanceOf[GSMat].ic, pc.asInstanceOf[GMat].data, opts.nsamps)
-	if (traceMem) println("uupdate %d %d %d, %d %d %d %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, dc.GUID, pc.GUID, unew.GUID, GPUmem._1, getGPU))
-	user ~ unew + opts.alpha   
+  // use case match to handle GMat and etc.
+  def uupdate(sdata:Mat, user:Mat):Unit = (sdata, user) match {
+    case (sdata: GSMat, user: GMat) => {
+    	if (opts.putBack < 0) user.set(1f)
+        for (i <- 0 until opts.uiter) {
+    	val preds = DDS(mm, user, sdata)	
+    	if (traceMem) println("uupdate %d %d %d, %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, GPUmem._1, getGPU))
+    	val dc = sdata.contents
+    	val pc = preds.contents
+    	//max(opts.weps, pc, pc)
+    	//pc ~ dc / pc
+    	pc ~ pc / dc
+    	val unew = gzeros(user.nrows, user.ncols)
+    	//val gmm = GMat(mm)
+        //val gum = GMat(updatemats(0))
+    	//gmm <-- mm
+    	//gum <-- updatemats(0)
+    	//LDAgibbs(opts.dim, sdata.nnz, modelmats(0).asInstanceOf[GMat].data, user.asInstanceOf[GMat].data, updatemats(0).asInstanceOf[GMat].data, unew.asInstanceOf[GMat].data, sdata.asInstanceOf[GSMat].ir, sdata.asInstanceOf[GSMat].ic, pc.asInstanceOf[GMat].data, opts.nsamps)
+    	LDAgibbs(opts.dim, sdata.nnz, mm.asInstanceOf[GMat].data, user.data, updatemats(0).asInstanceOf[GMat].data, unew.data, sdata.ir, sdata.ic, pc.asInstanceOf[GMat].data, opts.nsamps)
+        if (traceMem) println("uupdate %d %d %d, %d %d %d %d %f %d" format (mm.GUID, user.GUID, sdata.GUID, preds.GUID, dc.GUID, pc.GUID, unew.GUID, GPUmem._1, getGPU))
+    	user ~ unew + opts.alpha
+    	}
+    }
 
   }
   
   def mupdate(sdata:Mat, user:Mat):Unit = {
-
-  	updatemats(0) ~ updatemats(0) + opts.beta  
-  	sum(updatemats(0), 2, updatemats(1))
+	val um = updatemats(0)
+	um ~ um + opts.beta
+	//um ~ um/sum(um,2)
+  	//updatemats(0) ~ updatemats(0) + opts.beta  
+  	sum(um, 2, updatemats(1))
   	//if (traceMem) println("mupdate %d %d %d %d" format (sdata.GUID, user.GUID, ud.GUID, updatemats(0).GUID))
   }
   
